@@ -1,35 +1,59 @@
-// server.js
-import express from "express";
-import axios from "axios";
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
 
 const app = express();
-app.use(express.json());
+app.use(cors());
+app.use(bodyParser.json());
 
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN; // guardado en Render (ENV)
-const CHANNEL_ID = "1430766390729506916";       // tu canal
+// Datos temporales (en memoria)
+let users = [];
+let adsLog = [];
 
-app.post("/api/registrar_usuario", async (req, res) => {
-  try {
-    const { username, email } = req.body;
-    // (aquí podrías guardar en BD si quieres)
-
-    // Enviar mensaje a Discord usando el token seguro en el servidor
-    await axios.post(
-      `https://discord.com/api/v10/channels/${CHANNEL_ID}/messages`,
-      { content: `Nuevo usuario: ${username} (${email})` },
-      { headers: { Authorization: `Bot ${DISCORD_TOKEN}`, "Content-Type": "application/json" } }
-    );
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).json({ success: false, error: "Error interno" });
+// Registrar usuario
+app.post("/api/registrar_usuario", (req, res) => {
+  const { username, email, password } = req.body;
+  if (users.find((u) => u.username === username)) {
+    return res.status(400).json({ error: "Usuario ya existe" });
   }
+  users.push({ username, email, password });
+  res.status(201).json({ message: "Usuario registrado" });
 });
 
-// endpoint simple para chequear que está vivo
-app.get("/api/health", (req, res) => res.json({ ok: true }));
+// Login
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body;
+  const user = users.find(
+    (u) => u.username === username && u.password === password
+  );
+  if (!user) return res.status(401).json({ error: "Credenciales inválidas" });
+  res.json({ message: "Login exitoso" });
+});
 
-// Render (y la mayoría de PaaS) proveen PORT en process.env.PORT
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server listening on ${port}`));
+// Registrar anuncio visto
+app.post("/api/anuncio_visto", (req, res) => {
+  const { username, fecha } = req.body;
+  adsLog.push({ username, fecha });
+  res.json({ message: "Anuncio registrado" });
+});
+
+// Ranking
+app.get("/api/ranking", (req, res) => {
+  const ranking = {};
+  adsLog.forEach((log) => {
+    if (!ranking[log.username]) ranking[log.username] = 0;
+    ranking[log.username]++;
+  });
+
+  const sorted = Object.keys(ranking)
+    .map((username) => ({
+      username,
+      adsWatched: ranking[username],
+    }))
+    .sort((a, b) => b.adsWatched - a.adsWatched);
+
+  res.json(sorted);
+});
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`✅ Servidor activo en puerto ${PORT}`));
